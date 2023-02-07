@@ -14,6 +14,9 @@ package com.netflix.conductor.core.events.queue;
 
 import java.util.*;
 
+import com.netflix.conductor.core.dal.ExecutionDAOFacade;
+import com.netflix.conductor.core.execution.tasks.SystemTaskRegistry;
+import com.netflix.conductor.core.execution.tasks.WorkflowSystemTask;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -33,6 +36,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import static com.netflix.conductor.common.metadata.tasks.TaskType.TASK_TYPE_HTTP;
 import static com.netflix.conductor.common.metadata.tasks.TaskType.TASK_TYPE_WAIT;
 
 /**
@@ -53,15 +57,23 @@ public class DefaultEventQueueProcessor {
     private final WorkflowExecutor workflowExecutor;
     private static final TypeReference<Map<String, Object>> _mapType = new TypeReference<>() {};
     private final ObjectMapper objectMapper;
+    private final ExecutionDAOFacade executionDAOFacade;
+    private final SystemTaskRegistry systemTaskRegistry;
+
+
 
     public DefaultEventQueueProcessor(
             Map<Status, ObservableQueue> queues,
             WorkflowExecutor workflowExecutor,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            ExecutionDAOFacade executionDAOFacade,
+            SystemTaskRegistry systemTaskRegistry) {
         this.queues = queues;
         this.workflowExecutor = workflowExecutor;
         this.objectMapper = objectMapper;
         queues.forEach(this::startMonitor);
+        this.executionDAOFacade = executionDAOFacade;
+        this.systemTaskRegistry = systemTaskRegistry;
         LOGGER.info(
                 "DefaultEventQueueProcessor initialized with {} queues", queues.entrySet().size());
     }
@@ -224,5 +236,25 @@ public class DefaultEventQueueProcessor {
                     "There is no queue for handling " + status.toString() + " status");
         }
         queue.publish(Collections.singletonList(msg));
+    }
+
+    public Map<String, Object> run(String workflowId, String taskId, Map<String, Object> input) {
+        //query workflow
+        WorkflowModel workflow = executionDAOFacade.getWorkflowModel(workflowId, true);
+        TaskModel task = workflow.getTasks().stream()
+            .filter(e -> e.getTaskId().equals(taskId)).findFirst().orElse(null);
+
+        Objects.requireNonNull(task);
+        //must be http task
+        assert task.getTaskType().equals(TASK_TYPE_HTTP);
+
+        task.setInputData(input);
+//        HttpTask
+        WorkflowSystemTask sysTask = systemTaskRegistry.get(task.getTaskType());
+        sysTask.start(workflow, task, null);
+
+        //update
+        executionDAOFacade.updateTask(task);
+        return task.getOutputData();
     }
 }

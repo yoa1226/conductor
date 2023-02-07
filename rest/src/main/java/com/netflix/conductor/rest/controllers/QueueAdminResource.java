@@ -71,4 +71,13 @@ public class QueueAdminResource {
             throws Exception {
         defaultEventQueueProcessor.updateByTaskId(workflowId, taskId, output, status);
     }
+
+    @Operation(summary = "")
+    @PostMapping("/run/{workflowId}/task/{taskId}")
+    public Map<String, Object> runByTaskId(
+            @PathVariable("workflowId") String workflowId,
+            @PathVariable("taskId") String taskId,
+            @RequestBody Map<String, Object> input) {
+        return defaultEventQueueProcessor.run(workflowId, taskId, input);
+    }
 }

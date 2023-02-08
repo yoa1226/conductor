@@ -52,7 +52,7 @@ public class ConfigurationHostSupplier implements HostSupplier {
 
     private List<Host> parseHostsFrom(String hostConfig) {
         List<String> hostConfigs = Arrays.asList(hostConfig.split(";"));
-
+        log.info("hostConfig = "+hostConfig);
         return hostConfigs.stream()
                 .map(
                         hc -> {

@@ -20,6 +20,7 @@ import com.netflix.conductor.core.execution.tasks.WorkflowSystemTask;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
@@ -36,7 +37,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-import static com.netflix.conductor.common.metadata.tasks.TaskType.TASK_TYPE_HTTP;
+import static com.netflix.conductor.common.metadata.tasks.TaskType.TASK_TYPE_HTTP_WAIT;
 import static com.netflix.conductor.common.metadata.tasks.TaskType.TASK_TYPE_WAIT;
 
 /**
@@ -57,11 +58,10 @@ public class DefaultEventQueueProcessor {
     private final WorkflowExecutor workflowExecutor;
     private static final TypeReference<Map<String, Object>> _mapType = new TypeReference<>() {};
     private final ObjectMapper objectMapper;
-    private final ExecutionDAOFacade executionDAOFacade;
-    private final SystemTaskRegistry systemTaskRegistry;
+    private final ExecutionDAOFacade executionDAOFacade ;
+    private final SystemTaskRegistry systemTaskRegistry ;
 
-
-
+    @Autowired
     public DefaultEventQueueProcessor(
             Map<Status, ObservableQueue> queues,
             WorkflowExecutor workflowExecutor,
@@ -74,6 +74,19 @@ public class DefaultEventQueueProcessor {
         queues.forEach(this::startMonitor);
         this.executionDAOFacade = executionDAOFacade;
         this.systemTaskRegistry = systemTaskRegistry;
+        LOGGER.info(
+                "DefaultEventQueueProcessor initialized with {} queues", queues.entrySet().size());
+    }
+    public DefaultEventQueueProcessor(
+            Map<Status, ObservableQueue> queues,
+            WorkflowExecutor workflowExecutor,
+            ObjectMapper objectMapper) {
+        this.queues = queues;
+        this.workflowExecutor = workflowExecutor;
+        this.objectMapper = objectMapper;
+        queues.forEach(this::startMonitor);
+        this.executionDAOFacade =   null;
+        this.systemTaskRegistry = null;
         LOGGER.info(
                 "DefaultEventQueueProcessor initialized with {} queues", queues.entrySet().size());
     }
@@ -245,16 +258,13 @@ public class DefaultEventQueueProcessor {
             .filter(e -> e.getTaskId().equals(taskId)).findFirst().orElse(null);
 
         Objects.requireNonNull(task);
-        //must be http task
-        assert task.getTaskType().equals(TASK_TYPE_HTTP);
+        //must be http wait task
+        assert task.getTaskType().equals(TASK_TYPE_HTTP_WAIT);
 
         task.setInputData(input);
-//        HttpTask
+//        HttpWaitTask
         WorkflowSystemTask sysTask = systemTaskRegistry.get(task.getTaskType());
         sysTask.start(workflow, task, null);
-
-        //update
-        executionDAOFacade.updateTask(task);
         return task.getOutputData();
     }
 }
